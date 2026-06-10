@@ -4,8 +4,8 @@ import requests
 
 if __name__ == "__main__":
     # Tus credenciales
-    TOKEN = "8223579347:AAGUM2BU05Ej7z3mPVrKVojCbjbV8sLHHYM"
-    CHAT_ID = "8264061465" 
+    TOKEN = "TU_TOKEN_DE_TELEGRAM_AQUI"  # Reemplaza con tu token real
+    CHAT_ID = "TU_CHAT_ID_DE_TELEGRAM_AQUI"  # Reemplaza con tu chat ID real
     
     print("--- ORUS SISTEMA DE VIGILANCIA ONLINE ---")
     
