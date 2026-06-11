@@ -225,11 +225,54 @@ class OrusEngine:
             print(f"[ALERTA] > Intrusión enviada.")
 
     def _stream_reader(self):
-        cap = cv2.VideoCapture(0)
+        cap = None
+        indices_a_probar = [0, 1, 2]
+        
+        # cv2.CAP_MSMF: Microsoft Media Foundation (nativo para Win10/11 y cámaras USB modernas)
+        # cv2.CAP_ANY: Automático por si falla el anterior
+        backends = [cv2.CAP_MSMF, cv2.CAP_ANY] 
+        
+        for backend in backends:
+            if cap is not None:
+                break
+            
+            backend_name = "Media Foundation (MSMF)" if backend == cv2.CAP_MSMF else "Automático"
+            print(f"\n[SISTEMA] > Probando motor de captura: {backend_name}")
+            
+            for index in indices_a_probar:
+                print(f"   -> Intentando conectar al índice {index}...")
+                
+                # Evita que OpenCV envíe logs molestos a la consola si falla la prueba
+                temp_cap = cv2.VideoCapture(index, backend)
+                
+                if temp_cap.isOpened():
+                    # Lectura de prueba real para descartar cámaras virtuales en negro
+                    ret, frame = temp_cap.read()
+                    if ret:
+                        print(f"[SISTEMA] > ¡ÉXITO! Cámara Philco lista en índice {index} usando {backend_name}.")
+                        cap = temp_cap
+                        break
+                
+                # Liberamos el intento fallido
+                temp_cap.release()
+
+        # Si agotó todas las combinaciones y no hay cámara
+        if cap is None:
+            print("\n[!!! ERROR CRÍTICO !!!] > Imposible conectar con la cámara.")
+            print("1. Desconecta y vuelve a conectar el USB.")
+            print("2. Asegúrate de que la aplicación Cámara de Windows esté CERRADA.")
+            self.running = False
+            return
+
+        # Bucle principal de lectura
         while self.running:
             ret, frame = cap.read()
-            if ret: self.frame = frame
-            else: break
+            if ret: 
+                self.frame = frame
+            else: 
+                print("\n[ERROR] > Se perdió la conexión de video de repente.")
+                break
+                
         cap.release()
 
     def iniciar_vigilancia(self):
