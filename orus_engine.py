@@ -1,12 +1,16 @@
+# pyrefly: ignore [missing-import]
 import cv2
 import threading
 import os
 import time
 import sqlite3
+# pyrefly: ignore [missing-import]
 import numpy as np
 import requests
+import json
 from datetime import datetime
-from ultralytics import YOLO
+# pyrefly: ignore [missing-import]
+from ultralytics import YOLO 
 
 # Activar entorno virtual para ejecusion de modelo
 # .\venv\Scripts\activate
@@ -38,6 +42,13 @@ class OrusEngine:
         self.db_name = "orus_logs.db"
         self.evidencia_dir = "evidencia"
         self.auth_dir = "authorizedPerson"
+        self.config_file = "config.json"
+        
+        # Variables de estado ROI
+        self.dibujando_roi = False
+        self.roi_puntos_temp = []
+        
+        self._cargar_configuracion()
         
         print("[SISTEMA] > Cargando YOLOv8...")
         self.model = YOLO('yolov8n.pt')
@@ -48,13 +59,7 @@ class OrusEngine:
         self.nombres_autorizados = {}
         self.modelo_entrenado = False
         
-        # --- VARIABLES FALTANTES RESTAURADAS ---
         self.last_notification_time = {} # Diccionario para controlar el spam
-        self.cooldown_seconds = 30       # Segundos de espera entre alertas
-        # ---------------------------------------
-
-        # Zona prohibida
-        self.zona_prohibida = np.array([[100, 480], [540, 480], [450, 250], [190, 250]], np.int32)
         
         self.notifier = None
         if tg_token and tg_chat_id:
@@ -67,12 +72,42 @@ class OrusEngine:
         self._init_db()
         self._entrenar_caras()
 
+    def _cargar_configuracion(self):
+        self.cooldown_seconds = 30
+        self.camera_index = 0
+        self.zona_prohibida = np.array([[100, 480], [540, 480], [450, 250], [190, 250]], np.int32)
+        
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, "r") as f:
+                    config = json.load(f)
+                    self.cooldown_seconds = config.get("cooldown_seconds", 30)
+                    self.camera_index = config.get("camera_index", 0)
+                    roi_pts = config.get("roi_polygon", [])
+                    if len(roi_pts) >= 3:
+                        self.zona_prohibida = np.array(roi_pts, np.int32)
+                    elif len(roi_pts) == 0:
+                        self.zona_prohibida = np.array([], np.int32)
+            except Exception as e:
+                print(f"[WARN] Error cargando config.json: {e}")
+
+    def _guardar_configuracion(self):
+        config = {
+            "cooldown_seconds": self.cooldown_seconds,
+            "camera_index": self.camera_index,
+            "roi_polygon": self.zona_prohibida.tolist() if self.zona_prohibida.size > 0 else []
+        }
+        with open(self.config_file, "w") as f:
+            json.dump(config, f, indent=4)
+
     def _entrenar_caras(self):
         """Entrena el modelo con todas las fotos en authorizedPerson."""
         print("[SISTEMA] > (Re)Entrenando modelo facial...")
         caras_entrenamiento = []
         ids = []
-        current_id = 0
+        
+        nombres_a_id = {}
+        siguiente_id = 1
         self.nombres_autorizados = {} # Reiniciar mapeo
 
         archivos = [f for f in os.listdir(self.auth_dir) if f.endswith(('.jpg', '.png', '.jpeg'))]
@@ -86,25 +121,51 @@ class OrusEngine:
             path = os.path.join(self.auth_dir, archivo)
             nombre_base = os.path.splitext(archivo)[0].split('_')[0] 
             
+            if nombre_base not in nombres_a_id:
+                nombres_a_id[nombre_base] = siguiente_id
+                self.nombres_autorizados[siguiente_id] = nombre_base
+                siguiente_id += 1
+                
+            current_id = nombres_a_id[nombre_base]
+            
             img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
             if img is None: continue
             
-            # Detectar cara
-            rostros = self.face_cascade.detectMultiScale(img, 1.1, 5)
-            for (x, y, w, h) in rostros:
+            # Las fotos guardadas ya están recortadas con padding, intentamos detectar
+            rostros = self.face_cascade.detectMultiScale(img, 1.1, 4, minSize=(30, 30))
+            if len(rostros) > 0:
+                (x, y, w, h) = max(rostros, key=lambda b: b[2] * b[3])
                 caras_entrenamiento.append(img[y:y+h, x:x+w])
                 ids.append(current_id)
-                self.nombres_autorizados[current_id] = nombre_base
-            
-            if len(rostros) > 0:
-                current_id += 1
+            else:
+                # Fallback: toda la imagen es la cara
+                caras_entrenamiento.append(img)
+                ids.append(current_id)
         
         if len(ids) > 0:
             self.recognizer.train(caras_entrenamiento, np.array(ids))
             self.modelo_entrenado = True
-            print(f"[SISTEMA] > Modelo actualizado: {len(ids)} muestras aprendidas.")
+            print(f"[SISTEMA] > Modelo actualizado: {len(ids)} muestras aprendidas de {len(nombres_a_id)} residentes.")
         else:
             self.modelo_entrenado = False
+
+    def obtener_residentes(self):
+        return list(set(self.nombres_autorizados.values()))
+        
+    def eliminar_residente(self, nombre):
+        nombre = nombre.strip().upper()
+        archivos = os.listdir(self.auth_dir)
+        eliminados = 0
+        for f in archivos:
+            if f.startswith(f"{nombre}_"):
+                try:
+                    os.remove(os.path.join(self.auth_dir, f))
+                    eliminados += 1
+                except: pass
+        if eliminados > 0:
+            self._entrenar_caras()
+            return True
+        return False
 
     def _init_db(self):
         try:
@@ -116,15 +177,15 @@ class OrusEngine:
         except Exception: pass
 
     # --- FUNCIÓN DE APRENDIZAJE ---
-    def capturar_nuevo_residente(self, frame_inicial): # Renombrado para evitar confusión
+    def capturar_nuevo_residente(self, nombre):
         print("\n" + "="*40)
-        time.sleep(0.5) # Limpiar buffer de teclado
         
-        try:
-            nombre = input("[ENTRENAMIENTO] Ingrese nombre de la persona: ").strip().upper()
-        except: return
-
-        if not nombre: return
+        if not nombre: 
+            return
+            
+        nombre = nombre.strip().upper()
+        if not nombre:
+            return
 
         print(f"[ENTRENAMIENTO] Iniciando captura dinámica para {nombre}...")
         print(">> POR FAVOR: Mueve ligeramente la cabeza, sonríe, ponte serio mientras capturamos.")
@@ -275,24 +336,33 @@ class OrusEngine:
                 
         cap.release()
 
+    def actualizar_zona_roi(self, puntos):
+        if len(puntos) >= 3:
+            self.zona_prohibida = np.array(puntos, np.int32)
+            self._guardar_configuracion()
+            print("[SISTEMA] Zona ROI actualizada vía API.")
+            return True
+        return False
+
     def iniciar_vigilancia(self):
         self.frame = None
+        self.output_frame = None
         self.running = True
         threading.Thread(target=self._stream_reader, daemon=True).start()
         
-        print("\n" + "*"*50)
-        print("[SISTEMA] > ORUS VIGILANCIA ACTIVA")
-        print("[COMANDO] > Presione 't' para ENTRENAR una cara nueva.")
-        print("[COMANDO] > Presione 'q' para SALIR.")
-        print("*"*50 + "\n")
+        print("\n[SISTEMA] > ORUS ENGINE STREAMING (Headless Web Mode)")
 
         while self.running:
-            if self.frame is None: continue
+            if self.frame is None: 
+                time.sleep(0.01)
+                continue
             current_frame = self.frame.copy()
             
             overlay = current_frame.copy()
-            cv2.fillPoly(overlay, [self.zona_prohibida], (0, 0, 255))
-            cv2.addWeighted(overlay, 0.4, current_frame, 0.6, 0, current_frame)
+            
+            if self.zona_prohibida.size > 0:
+                cv2.fillPoly(overlay, [self.zona_prohibida], (0, 0, 255))
+                cv2.addWeighted(overlay, 0.4, current_frame, 0.6, 0, current_frame)
 
             results = self.model.track(current_frame, persist=True, classes=[0], verbose=False)
 
@@ -303,7 +373,12 @@ class OrusEngine:
                 for box, obj_id in zip(boxes, ids):
                     px, py = int((box[0] + box[2]) / 2), int(box[3])
                     
-                    if cv2.pointPolygonTest(self.zona_prohibida, (px, py), False) >= 0:
+                    adentro = False
+                    if self.zona_prohibida.size > 0:
+                        if cv2.pointPolygonTest(self.zona_prohibida, (px, py), False) >= 0:
+                            adentro = True
+                    
+                    if adentro:
                         color, texto = self.procesar_sujeto(obj_id, current_frame, box)
                     else:
                         color, texto = (0, 255, 0), f"Persona #{obj_id}"
@@ -311,16 +386,5 @@ class OrusEngine:
                     cv2.rectangle(current_frame, (box[0], box[1]), (box[2], box[3]), color, 2)
                     cv2.putText(current_frame, texto, (box[0], box[1]-10), 0, 0.5, color, 2)
 
-            cv2.putText(current_frame, "Presiona 't' para entrenar", (10, 30), 
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-
-            cv2.imshow("SISTEMA ORUS - SECURITY", current_frame)
-            
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                self.running = False
-                break
-            elif key == ord('t'):
-                self.capturar_nuevo_residente(self.frame)
-
-        cv2.destroyAllWindows()
+            self.output_frame = current_frame
+            time.sleep(0.03) # Cap FPS para web

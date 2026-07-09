@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ORUS IA - Security Dashboard</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/extra.css') }}">
+    <!-- Phosphor Icons para iconografía moderna -->
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Sidebar Izquierda (Menú/Logo) -->
+        <aside class="sidebar">
+            <div class="brand">
+                <i class="ph-fill ph-eye"></i>
+                <h1>ORUS</h1>
+                <span class="badge live">LIVE</span>
+            </div>
+            
+            <nav class="menu">
+                <button id="nav-monitor" class="active"><i class="ph ph-video-camera"></i> Monitoreo</button>
+                <button id="nav-residents"><i class="ph ph-users"></i> Residentes</button>
+                <button id="nav-config"><i class="ph ph-gear"></i> Configuración</button>
+            </nav>
+            
+            <div class="status-card">
+                <h3>Estado del Sistema</h3>
+                <div class="status-item">
+                    <span>YOLOv8 Engine</span>
+                    <span class="dot green"></span>
+                </div>
+                <div class="status-item">
+                    <span>Telegram API</span>
+                    <span class="dot green"></span>
+                </div>
+                <div class="status-item">
+                    <span>Protección ROI</span>
+                    <span class="dot yellow"></span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Panel Central (Video / Controles) -->
+        <main class="main-content">
+            
+            <!-- SECCIÓN: MONITOREO -->
+            <section id="section-monitor" class="view-section active">
+                <header>
+                    <h2>Vigilancia Perimetral</h2>
+                    <div class="actions">
+                        <button id="btn-draw-roi" class="btn primary"><i class="ph ph-bounding-box"></i> Dibujar Zona (ROI)</button>
+                        <button id="btn-train" class="btn secondary"><i class="ph ph-user-plus"></i> Añadir Residente</button>
+                    </div>
+                </header>
+                <div class="video-container">
+                    <img id="video-stream" src="/video_feed" alt="Video Feed no disponible">
+                    <canvas id="roi-canvas"></canvas>
+                </div>
+            </section>
+
+            <!-- SECCIÓN: RESIDENTES -->
+            <section id="section-residents" class="view-section hidden">
+                <header>
+                    <h2>Gestión de Residentes</h2>
+                    <button id="btn-train-alt" class="btn primary"><i class="ph ph-user-plus"></i> Nuevo Residente</button>
+                </header>
+                <div class="residents-grid" id="residents-list">
+                    <!-- Cards de residentes -->
+                </div>
+            </section>
+
+            <!-- SECCIÓN: CONFIGURACIÓN -->
+            <section id="section-config" class="view-section hidden">
+                <header>
+                    <h2>Configuración del Sistema</h2>
+                </header>
+                <div class="config-form">
+                    <div class="form-group">
+                        <label>Enfriamiento de Alertas (Segundos)</label>
+                        <input type="number" id="input-cooldown" min="5" max="300">
+                        <small>Tiempo de espera entre notificaciones consecutivas a Telegram.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Índice de Cámara (Requiere reinicio)</label>
+                        <input type="number" id="input-camera" min="0" max="5">
+                    </div>
+                    <button id="btn-save-config" class="btn primary">Guardar Cambios</button>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- Panel Derecho (Logs) -->
+        <aside class="logs-panel">
+            <h3>Últimas Alertas</h3>
+            <div class="logs-list" id="logs-container">
+                <!-- Se poblará vía JS -->
+                <div class="log-placeholder">Cargando eventos...</div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- Modal para nuevo residente -->
+    <div class="modal-overlay" id="modal-train">
+        <div class="modal">
+            <h3>Registrar Nuevo Residente</h3>
+            <p>Párate frente a la cámara y escribe tu nombre para iniciar el aprendizaje de la IA.</p>
+            <input type="text" id="input-nombre" placeholder="Ej. Juan Pérez">
+            <div class="modal-actions">
+                <button class="btn secondary" onclick="closeModal()">Cancelar</button>
+                <button class="btn primary" id="submit-train">Iniciar Captura</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

@@ -1,13 +1,21 @@
 import time
+import os
 from orus_engine import OrusEngine, OrusNotifier
 import requests
+from dotenv import load_dotenv
 
 if __name__ == "__main__":
+    load_dotenv()
+    
     # Tus credenciales
-    TOKEN = "TU_TOKEN_DE_TELEGRAM_AQUI"  # Reemplaza con tu token real
-    CHAT_ID = "TU_CHAT_ID_DE_TELEGRAM_AQUI"  # Reemplaza con tu chat ID real
+    TOKEN = os.getenv("TELEGRAM_TOKEN")
+    CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
     
     print("--- ORUS SISTEMA DE VIGILANCIA ONLINE ---")
+    
+    if not TOKEN or not CHAT_ID:
+        print("[ERROR] Faltan las credenciales de Telegram. Crea tu archivo .env basado en .env.example")
+        exit(1)
     
     # --- PRUEBA DE CONEXIÓN INICIAL ---
     print("[TEST] Probando conexión con Telegram...")

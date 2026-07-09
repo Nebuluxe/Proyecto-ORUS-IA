@@ -1,0 +1,27 @@
+# Entornos virtuales
+venv/
+env/
+
+# Variables de entorno y credenciales sensibles
+.env
+
+# Base de datos local
+orus_logs.db
+
+# Configuración local de cámara y zonas ROI
+config.json
+
+# Dataset y capturas de personas/evidencia (Generados dinámicamente)
+authorizedPerson/
+evidencia/
+
+# Modelos y pesos de IA (Descargados automáticamente en ejecución)
+*.pt
+
+# Caché de Python
+__pycache__/
+*.pyc
+
+# Archivos temporales del sistema operativo
+.DS_Store
+Thumbs.db
